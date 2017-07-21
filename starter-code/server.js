@@ -1,15 +1,15 @@
 'use strict';
 
-const pg = require('pg');
+const pg = require('pg');//is a wrapper library
 const fs = require('fs');
 const express = require('express');
-const bodyParser = require('body-parser');
+const bodyParser = require('body-parser');//on request, parses the body content with javascript
 const PORT = process.env.PORT || 3000;
 const app = express();
 const conString = 'postgres://postgres:1234:5432/kilovolt';// TODO: Don't forget to set your own conString
 const client = new pg.Client(conString);
 client.connect();
-client.on('error', function(error) {
+client.on('error', function(error) {//registers an EVENT EMITTER (similar to an event listener) It's like a global event listener for that object
   console.error(error);
 });
 
@@ -17,11 +17,11 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(express.static('./public'));
 
-app.get('/new', function(request, response) {
+app.get('/new', function(request, response) {//returns new html document
   response.sendFile('new.html', {root: './public'});
 });
 
-app.get('/articles', function(request, response) {
+app.get('/articles', function(request, response) {//retrieves all articles
   // REVIEW: This query will join the data together from our tables and send it back to the client.
   // TODO: Write a SQL query which joins all data from articles and authors tables on the author_id value of each
   client.query(
@@ -30,8 +30,8 @@ app.get('/articles', function(request, response) {
     FROM authors
     INNER JOIN articles
       ON articles.author_id = authors.author_id
-    ORDER BY authors.author;
     `)
+    // ORDER BY authors.author; (Is not needed in this because we already have them ordered by publishedOn which would also go inside the query but you cant have comments inside queries)
   .then(function(result) {
     response.send(result.rows);
   })
@@ -46,7 +46,10 @@ app.post('/articles', function(request, response) {
     INSERT INTO authors(author, "authorUrl")
     VALUES($1, $2) ON CONFLICT DO NOTHING
     `, // TODO: Write a SQL query to insert a new author, ON CONFLICT DO NOTHING
-    [request.body.author, request.body.authorUrl], // TODO: Add the author and "authorUrl" as data for the SQL query
+    [
+      request.body.author,
+      request.body.authorUrl
+    ], // TODO: Add the author and "authorUrl" as data for the SQL query
     function(err) {
       if (err) console.error(err)
       queryTwo() // This is our second query, to be executed when this first query is complete.
@@ -55,10 +58,14 @@ app.post('/articles', function(request, response) {
 
   function queryTwo() {
     client.query(
-      `SELECT author_id
+      `
+      SELECT author_id
       FROM authors
+      WHERE author = $1
       `, // TODO: Write a SQL query to retrieve the author_id from the authors table for the new article
-      [request.body.author_id], // TODO: Add the author name as data for the SQL query
+      [
+        request.body.author
+      ], // TODO: Add the author name as data for the SQL query
       function(err, result) {
         if (err) console.error(err)
         queryThree(result.rows[0].author_id) // This is our third query, to be executed when the second is complete. We are also passing the author_id into our third query
@@ -66,21 +73,20 @@ app.post('/articles', function(request, response) {
     )
   }
 
-  function queryThree(author_id) {
+  function queryThree(author_id) {//is a write-an-article-with-reference-to-the-author_id query
     client.query(
       `
       INSERT INTO
-      articles(article_id, author_id, title, category, "publishedOn", body)
-      SELECT author_id, $1, $2, $3, $4
-      FROM authors
-      WHERE author=$5;
+      articles(author_id, title, category, "publishedOn", body)
+      VALUES ($1, $2, $3, $4, $5);
       `, // TODO: Write a SQL query to insert the new article using the author_id from our previous query
-      [request.body.article_id,
+      [
         author_id,
         request.body.title,
         request.body.category,
         request.body.publishedOn,
-        request.body.body ], // TODO: Add the data from our new article, including the author_id, as data for the SQL query.
+        request.body.body
+      ], // TODO: Add the data from our new article, including the author_id, as data for the SQL query.
       function(err) {
         if (err) console.error(err);
         response.send('insert complete');
@@ -92,30 +98,34 @@ app.post('/articles', function(request, response) {
 app.put('/articles/:id', function(request, response) {
   // TODO: Write a SQL query to update an author record. Remember that our articles now have
   // an author_id property, so we can reference it from the request.body.
-  // TODO: Add the required values from the request as data for the SQL query to interpolate
   client.query(
-    `UPDATE articles
+    `UPDATE authors
      SET author = $1, authorUrl = $2
      WHERE author_id = $3
     `,
-    [request.body.author,
+    // TODO: Add the required values from the request as data for the SQL query to interpolate
+    [
+      request.body.author,
       request.body.authorUrl,
-      request.body.author_id]
+      request.body.author_id
+    ]
   )
   .then(function() {
     // TODO: Write a SQL query to update an article record. Keep in mind that article records
     // now have an author_id, in addition to title, category, publishedOn, and body.
-    // TODO: Add the required values from the request as data for the SQL query to interpolate
     client.query(
       `UPDATE articles
-       SET title = $1, category = $2, "publishedOn" = $3, body = $4, author_id = $5
+       SET author_id = $1, title = $2, category = $3, "publishedOn" = $4, body = $5
        WHERE article_id = $6`,
-      [request.body.title,
+       // TODO: Add the required values from the request as data for the SQL query to interpolate
+      [
+        request.body.author_id,
+        request.body.title,
         request.body.category,
         request.body.publishedOn,
         request.body.body,
-        request.body.author_id,
-        request.body.article_id]
+        request.params.id//gives access to :id ABOVE in app.put('/articles/:id', function(request, response))
+      ]
     )
   })
   .then(function() {
